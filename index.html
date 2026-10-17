@@ -93,18 +93,15 @@
         const statusBadge = document.getElementById('status-badge');
         const statusDot = document.getElementById('status-dot');
 
-        // Función auxiliar para formatear los segundos a MM:SS
         function formatTime(totalSeconds) {
             const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
             const s = (totalSeconds % 60).toString().padStart(2, '0');
             return `${m}:${s}`;
         }
 
-        // Función para aplicar estilos dinámicamente según el estado
         function applyStatusStyle(message, state) {
             statusText.innerText = message;
             
-            // Limpiar clases previas
             statusBadge.className = "px-4 py-1.5 rounded-full font-bold text-sm shadow-sm flex items-center gap-2 w-fit transition-colors duration-300 border";
             statusDot.className = "w-2.5 h-2.5 rounded-full transition-colors duration-300";
 
@@ -132,47 +129,44 @@
             }
         }
 
-        // Función de error explícito al no encontrar datos en la nube
         function showError(motivo) {
             flowVal.innerText = "--";
             durationVal.innerText = "--:--";
             applyStatusStyle(motivo || "Desconectado de la Nube", "OFFLINE");
         }
 
-        // Bucle de lectura desde Dweet.cc
         async function fetchCloudData() {
             try {
-                // Controlador para cancelar la petición si tarda más de 400ms
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 400);
-
-                // Fetch a la API pública de Dweet con el controlador
-                const response = await fetch(CLOUD_URL, { signal: controller.signal });
-                clearTimeout(timeoutId);
+                const response = await fetch(CLOUD_URL);
 
                 if (!response.ok) {
-                    if(response.status === 404) {
-                        throw new Error("Esperando primer dato de Wokwi...");
-                    }
+                    if(response.status === 404) throw new Error("Esperando primer dato de Wokwi...");
                     throw new Error("Error del servidor: " + response.status);
                 }
 
                 const jsonResponse = await response.json();
 
-                // Extraer el contenido de la estructura de Dweet.cc
                 if (jsonResponse.this === "succeeded" && jsonResponse.with && jsonResponse.with.length > 0) {
-                    // Dweet encapsula nuestros datos en jsonResponse.with[0].content
-                    const data = jsonResponse.with[0].content;
+                    const dweetData = jsonResponse.with[0];
+                    const data = dweetData.content;
+                    
+                    // LÓGICA DE DESCONEXIÓN: Comparar la hora del dato con la hora actual
+                    const timestampDato = new Date(dweetData.created).getTime();
+                    const tiempoActual = Date.now();
+                    const antiguedadMilisegundos = tiempoActual - timestampDato;
 
-                    // Asegurar parseo de números
+                    // Si el dato tiene más de 4.5 segundos de viejo, Wokwi se detuvo
+                    if (antiguedadMilisegundos > 4500) {
+                        showError("Simulación Detenida (Sin conexión)");
+                        return; // Detenemos la actualización visual
+                    }
+
                     const currentFlow = parseFloat(data.flow) || 0;
                     const currentDuration = parseInt(data.duration) || 0;
 
-                    // Actualizar interfaz con números reales
                     flowVal.innerText = currentFlow.toFixed(2);
                     durationVal.innerText = formatTime(currentDuration);
 
-                    // Lógica de reglas solicitada
                     if (currentFlow === 0) {
                         applyStatusStyle("Sistema en reposo", "IDLE");
                     } else if (currentFlow < 30 && currentDuration > 3) {
@@ -180,7 +174,6 @@
                     } else if (currentFlow >= 30 && currentDuration > 3) {
                         applyStatusStyle("CRÍTICO: Tubería Rota", "CRITICAL");
                     } else {
-                        // Flujo normal sin superar tiempos de alerta
                         applyStatusStyle("Agua Fluyendo", "FLOWING");
                     }
                 } else {
@@ -188,11 +181,7 @@
                 }
 
             } catch (error) {
-                console.error("Fallo la petición a Dweet: ", error);
-                if(error.name === 'AbortError') {
-                    // Ignoramos el error de aborto para que no parpadee a OFFLINE, simplemente reintenta en 500ms
-                    console.log("Petición muy lenta, reintentando...");
-                } else if(error.message === "Failed to fetch") {
+                if(error.message === "Failed to fetch") {
                     showError("Bloqueado por AdBlock / Antivirus / Brave");
                 } else {
                     showError(error.message);
@@ -200,7 +189,7 @@
             }
         }
 
-        // Ejecutar inmediatamente al cargar y luego cada medio segundo (500ms)
+        // Ejecutar inmediatamente y luego cada medio segundo (500ms) exacto
         fetchCloudData();
         setInterval(fetchCloudData, 500);
     </script>
