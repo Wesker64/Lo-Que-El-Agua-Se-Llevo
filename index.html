@@ -80,10 +80,11 @@
         &copy; 2026 - Control IoT de Tuberías
     </footer>
 
-    <!-- Lógica de Peticiones (Sin datos simulados) -->
+    <!-- Lógica de Peticiones a la Nube (Dweet.io) -->
     <script>
-        // URL de tu ESP32
-        const ESP32_URL = 'http://192.168.1.100/data';
+        // ID Único de tu ESP32 en la nube (Dweet.io)
+        const THING_NAME = 'monitor-fugas-esp32-demo-xyz123';
+        const CLOUD_URL = `https://dweet.io/get/latest/dweet/for/${THING_NAME}`;
 
         // Elementos del DOM
         const flowVal = document.getElementById('flow-val');
@@ -118,11 +119,11 @@
                     break;
                 case 'FLOWING':
                     statusBadge.classList.add('bg-[#78FFFD]/10', 'border-[#78FFFD]', 'text-[#78FFFD]');
-                    statusDot.classList.add('bg-[#78FFFD]', 'indicador-activo');
+                    statusDot.classList.add('bg-[#78FFFD]', 'shadow-[0_0_8px_#78FFFD]');
                     break;
                 case 'MODERATE':
                     statusBadge.classList.add('bg-yellow-900/30', 'border-yellow-500', 'text-yellow-400');
-                    statusDot.classList.add('bg-yellow-500', 'indicador-activo');
+                    statusDot.classList.add('bg-yellow-500', 'shadow-[0_0_8px_#eab308]');
                     break;
                 case 'CRITICAL':
                     statusBadge.classList.add('bg-red-900/40', 'border-red-500', 'text-red-500', 'animate-pulse');
@@ -131,59 +132,62 @@
             }
         }
 
-        // Función de error explícito al no encontrar el ESP32
+        // Función de error explícito al no encontrar datos en la nube
         function showError() {
             flowVal.innerText = "--";
             durationVal.innerText = "--:--";
-            applyStatusStyle("Error de conexión con ESP32", "OFFLINE");
+            applyStatusStyle("Desconectado de la Nube", "OFFLINE");
         }
 
-        // Bucle de lectura
-        async function fetchESP32Data() {
+        // Bucle de lectura desde Dweet.io
+        async function fetchCloudData() {
             try {
-                // Timeout corto de 800ms para evitar que se cuelgue si no hay red
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 800);
-
-                const response = await fetch(ESP32_URL, { signal: controller.signal });
-                clearTimeout(timeoutId);
+                // Fetch a la API pública de Dweet
+                const response = await fetch(CLOUD_URL);
 
                 if (!response.ok) {
                     throw new Error("HTTP error " + response.status);
                 }
 
-                const data = await response.json();
+                const jsonResponse = await response.json();
 
-                // Asegurar parseo de números
-                const currentFlow = parseFloat(data.flow) || 0;
-                const currentDuration = parseInt(data.duration) || 0;
+                // Extraer el contenido de la estructura de Dweet.io
+                if (jsonResponse.this === "succeeded" && jsonResponse.with && jsonResponse.with.length > 0) {
+                    // Dweet encapsula nuestros datos en jsonResponse.with[0].content
+                    const data = jsonResponse.with[0].content;
 
-                // Actualizar interfaz con números reales
-                flowVal.innerText = currentFlow.toFixed(2);
-                durationVal.innerText = formatTime(currentDuration);
+                    // Asegurar parseo de números
+                    const currentFlow = parseFloat(data.flow) || 0;
+                    const currentDuration = parseInt(data.duration) || 0;
 
-                // Lógica de reglas solicitada
-                if (currentFlow === 0) {
-                    applyStatusStyle("Sistema en reposo", "IDLE");
-                } else if (currentFlow < 30 && currentDuration > 3) {
-                    applyStatusStyle("Alerta: Posible Fuga Moderada", "MODERATE");
-                } else if (currentFlow >= 30 && currentDuration > 3) {
-                    applyStatusStyle("CRÍTICO: Tubería Rota", "CRITICAL");
+                    // Actualizar interfaz con números reales
+                    flowVal.innerText = currentFlow.toFixed(2);
+                    durationVal.innerText = formatTime(currentDuration);
+
+                    // Lógica de reglas solicitada
+                    if (currentFlow === 0) {
+                        applyStatusStyle("Sistema en reposo", "IDLE");
+                    } else if (currentFlow < 30 && currentDuration > 3) {
+                        applyStatusStyle("Alerta: Posible Fuga Moderada", "MODERATE");
+                    } else if (currentFlow >= 30 && currentDuration > 3) {
+                        applyStatusStyle("CRÍTICO: Tubería Rota", "CRITICAL");
+                    } else {
+                        // Flujo normal sin superar tiempos de alerta
+                        applyStatusStyle("Agua Fluyendo", "FLOWING");
+                    }
                 } else {
-                    // Flujo normal sin superar tiempos de alerta
-                    applyStatusStyle("Agua Fluyendo", "FLOWING");
+                    showError();
                 }
 
             } catch (error) {
-                // Si la red se cae, si el ESP se apaga o da un error de CORS/fetch
-                console.error("Fallo la petición al ESP32: ", error);
+                console.error("Fallo la petición a Dweet: ", error);
                 showError();
             }
         }
 
-        // Ejecutar inmediatamente al cargar y luego cada 1 segundo (1000ms)
-        fetchESP32Data();
-        setInterval(fetchESP32Data, 1000);
+        // Ejecutar inmediatamente al cargar y luego cada 1.5 segundos
+        fetchCloudData();
+        setInterval(fetchCloudData, 1500);
     </script>
 </body>
 </html>
