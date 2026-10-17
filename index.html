@@ -91,10 +91,9 @@
         const statusBadge = document.getElementById('status-badge');
         const statusDot = document.getElementById('status-dot');
 
-        // Variables maestras de control de tiempo
         let ultimoDatoRecibido = "";
         let contadorDatosRepetidos = 0;
-        let esPrimeraCarga = true;
+        let sensorConfirmadoVivo = false;
 
         function formatTime(totalSeconds) {
             const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
@@ -135,15 +134,16 @@
         function showError(motivo) {
             flowVal.innerText = "--";
             durationVal.innerText = "--:--";
-            applyStatusStyle(motivo || "Desconectado de la Nube", "OFFLINE");
+            applyStatusStyle(motivo || "Desconectado", "OFFLINE");
         }
 
         async function fetchCloudData() {
             try {
-                const response = await fetch(CLOUD_URL);
+                // El "?nocache=" evita que Opera GX guarde datos viejos en su memoria
+                const url = CLOUD_URL + "?nocache=" + new Date().getTime();
+                const response = await fetch(url, { cache: 'no-store' });
 
                 if (!response.ok) {
-                    if(response.status === 404) throw new Error("Esperando primer dato de Wokwi...");
                     throw new Error("Error del servidor: " + response.status);
                 }
 
@@ -153,59 +153,62 @@
                     const dweetData = jsonResponse.with[0];
                     const data = dweetData.content;
                     
-                    // LÓGICA DE DETECCIÓN HÍBRIDA (Inmune a bloqueos)
-                    const ageInSeconds = (Date.now() - new Date(dweetData.created).getTime()) / 1000;
+                    // 1. PRIMERA CARGA AL ABRIR LA PÁGINA
+                    if (ultimoDatoRecibido === "") {
+                        ultimoDatoRecibido = dweetData.created;
+                        applyStatusStyle("Sincronizando...", "IDLE");
+                        return; // Ocultamos los datos hasta confirmar que no es un fantasma
+                    }
 
-                    // 1. Verificamos si el dato es exactamente el mismo que la vez pasada
+                    // 2. COMPARAR DATOS EN BUSCA DE MOVIMIENTO
                     if (dweetData.created === ultimoDatoRecibido) {
                         contadorDatosRepetidos++;
                     } else {
+                        // ¡El dato cambió! Wokwi está vivo.
                         ultimoDatoRecibido = dweetData.created;
-                        contadorDatosRepetidos = 0; // Si hay dato nuevo, limpiamos la alarma
+                        contadorDatosRepetidos = 0;
+                        sensorConfirmadoVivo = true; 
                     }
 
-                    // 2. Si recién abres la página y detecta que el último dato tiene más de 15 segundos
-                    // llenamos el contador artificialmente para que caiga en error de inmediato.
-                    if (esPrimeraCarga && ageInSeconds > 15) {
-                        contadorDatosRepetidos = 20; 
-                    }
-                    esPrimeraCarga = false; // Desactivamos la revisión de primera carga
-
-                    // 3. Ejecutar desconexión si llegamos al límite (20 intentos de 500ms = 10 segundos)
-                    if (contadorDatosRepetidos >= 20) {
+                    // 3. LÍMITE DE DESCONEXIÓN (8 intentos rápidos = 4 segundos exactos)
+                    if (contadorDatosRepetidos >= 8) {
+                        sensorConfirmadoVivo = false; // El sensor está apagado
                         showError("Simulación Detenida (Sin conexión)");
-                        return; // Cortamos aquí para que no actualice la interfaz visual
+                        return;
                     }
 
-                    // === DIBUJAR DATOS (Solo si no hubo desconexión) ===
-                    const currentFlow = parseFloat(data.flow) || 0;
-                    const currentDuration = parseInt(data.duration) || 0;
+                    // 4. MOSTRAR DATOS (Solo si confirmamos que la simulación corre)
+                    if (sensorConfirmadoVivo) {
+                        const currentFlow = parseFloat(data.flow) || 0;
+                        const currentDuration = parseInt(data.duration) || 0;
 
-                    flowVal.innerText = currentFlow.toFixed(2);
-                    durationVal.innerText = formatTime(currentDuration);
+                        flowVal.innerText = currentFlow.toFixed(2);
+                        durationVal.innerText = formatTime(currentDuration);
 
-                    if (currentFlow === 0) {
-                        applyStatusStyle("Sistema en reposo", "IDLE");
-                    } else if (currentFlow < 30 && currentDuration > 3) {
-                        applyStatusStyle("Alerta: Posible Fuga Moderada", "MODERATE");
-                    } else if (currentFlow >= 30 && currentDuration > 3) {
-                        applyStatusStyle("CRÍTICO: Tubería Rota", "CRITICAL");
+                        if (currentFlow === 0) {
+                            applyStatusStyle("Sistema en reposo", "IDLE");
+                        } else if (currentFlow < 30 && currentDuration > 3) {
+                            applyStatusStyle("Alerta: Posible Fuga Moderada", "MODERATE");
+                        } else if (currentFlow >= 30 && currentDuration > 3) {
+                            applyStatusStyle("CRÍTICO: Tubería Rota", "CRITICAL");
+                        } else {
+                            applyStatusStyle("Agua Fluyendo", "FLOWING");
+                        }
                     } else {
-                        applyStatusStyle("Agua Fluyendo", "FLOWING");
+                        // Mantenemos a la espera un instante
+                        applyStatusStyle("Buscando señal...", "IDLE");
                     }
+
                 } else {
-                    showError("Buzón vacío en Dweet.cc");
+                    showError("Buzón vacío");
                 }
 
             } catch (error) {
-                if(error.message === "Failed to fetch") {
-                    showError("Bloqueado por Escudos de Privacidad");
-                } else {
-                    showError(error.message);
-                }
+                showError("Desconectado de la red");
             }
         }
 
+        // Ejecutar lectura
         fetchCloudData();
         setInterval(fetchCloudData, 500);
     </script>
