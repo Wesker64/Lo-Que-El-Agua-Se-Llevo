@@ -157,7 +157,7 @@
                         // El dato es el mismo que la vez pasada, sumamos al contador
                         contadorDatosRepetidos++;
                         if (contadorDatosRepetidos >= 8) { // 8 intentos a 500ms = 4 segundos sin datos nuevos
-                            showError("Simulación Detenida (Sin conexión)");
+                            showError("Sin conexión con el servidor");
                             return; // Congelamos la interfaz en modo error
                         }
                     } else {
