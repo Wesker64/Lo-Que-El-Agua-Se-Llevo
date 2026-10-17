@@ -1,0 +1,16 @@
+ /* Tipografía Web Safe solicitada para el Header */
+        .fuente-clasica {
+            font-family: Georgia, "Times New Roman", serif;
+        }
+
+        /* 
+         * Animación puramente CSS para simular que el sistema está 
+         * leyendo datos activamente (parpadeo suave del indicador).
+         */
+        @keyframes latido {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .indicador-activo {
+            animation: latido 2s ease-in-out infinite;
+        }

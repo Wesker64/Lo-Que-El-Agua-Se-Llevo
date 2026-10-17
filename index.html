@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Monitor de Fugas ESP32</title>
+    <!-- Importar Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-slate-900 min-h-screen flex flex-col text-slate-300 font-sans">
+
+    <!-- Header con color #78FFFD y tipografía Georgia -->
+    <header class="bg-[#78FFFD] text-slate-900 py-6 shadow-[0_4px_15px_rgba(120,255,253,0.15)] flex justify-center items-center">
+        <h1 class="text-3xl md:text-4xl font-bold fuente-clasica tracking-wide">
+            Monitor de Fugas
+        </h1>
+    </header>
+
+    <!-- Sección Principal (Dashboard) -->
+    <main class="flex-grow flex items-center justify-center p-4 sm:p-6">
+        
+        <!-- Tarjeta (Card) Principal -->
+        <div class="bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 sm:p-8 flex flex-col gap-6 border border-slate-700">
+            
+            <!-- Texto descriptivo justificado con borde izquierdo #78FFFD -->
+            <div class="border-l-4 border-[#78FFFD] pl-4">
+                <p class="text-slate-400 text-justify text-sm leading-relaxed">
+                    Panel de telemetría en tiempo real. Esta interfaz visualiza la última lectura registrada por el microcontrolador ESP32 y el sensor de flujo YF-S201. Requiere conexión directa a la red local del dispositivo.
+                </p>
+            </div>
+
+            <!-- Contenedor de Métricas -->
+            <div class="flex flex-col gap-4 mt-2">
+                
+                <!-- 1. Estado Actual -->
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-900/50 rounded-xl border border-slate-700 gap-3">
+                    <div class="flex flex-col">
+                        <span class="text-xs uppercase tracking-wider font-bold text-slate-500">Estado de red</span>
+                        <span class="font-semibold text-slate-300">Sistema</span>
+                    </div>
+                    <!-- Etiqueta de estado (Se actualiza vía JS) -->
+                    <div id="status-badge" class="px-4 py-1.5 rounded-full font-bold text-sm shadow-sm flex items-center gap-2 w-fit bg-slate-700 border border-slate-600 text-slate-300 transition-colors duration-300">
+                        <span id="status-dot" class="w-2.5 h-2.5 rounded-full bg-slate-400 transition-colors duration-300"></span>
+                        <span id="status-text">Conectando...</span>
+                    </div>
+                </div>
+
+                <!-- 2. Caudal Actual -->
+                <div class="flex items-center justify-between p-4 bg-slate-900/50 rounded-xl border border-slate-700">
+                    <div class="flex flex-col">
+                        <span class="text-xs uppercase tracking-wider font-bold text-slate-500">Lectura YF-S201</span>
+                        <span class="font-semibold text-slate-300">Caudal actual</span>
+                    </div>
+                    <div class="text-right flex items-baseline gap-1">
+                        <span id="flow-val" class="text-3xl font-black text-[#78FFFD] transition-all">--</span>
+                        <span class="text-sm font-bold text-slate-500">L/min</span>
+                    </div>
+                </div>
+
+                <!-- 3. Tiempo de Flujo Continuo -->
+                <div class="flex items-center justify-between p-4 bg-slate-900/50 rounded-xl border border-slate-700">
+                    <div class="flex flex-col">
+                        <span class="text-xs uppercase tracking-wider font-bold text-slate-500">Cronómetro</span>
+                        <span class="font-semibold text-slate-300">Flujo continuo</span>
+                    </div>
+                    <div class="text-right flex items-baseline gap-1">
+                        <span id="duration-val" class="text-3xl font-black text-[#78FFFD] transition-all">--:--</span>
+                        <span class="text-sm font-bold text-slate-500">m:s</span>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer sencillo -->
+    <footer class="text-center py-6 text-slate-600 text-xs font-semibold uppercase tracking-wider">
+        &copy; 2026 - Control IoT de Tuberías
+    </footer>
+
+    <!-- Lógica de Peticiones (Sin datos simulados) -->
+    <script>
+        // URL de tu ESP32
+        const ESP32_URL = 'http://192.168.1.100/data';
+
+        // Elementos del DOM
+        const flowVal = document.getElementById('flow-val');
+        const durationVal = document.getElementById('duration-val');
+        const statusText = document.getElementById('status-text');
+        const statusBadge = document.getElementById('status-badge');
+        const statusDot = document.getElementById('status-dot');
+
+        // Función auxiliar para formatear los segundos a MM:SS
+        function formatTime(totalSeconds) {
+            const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+            const s = (totalSeconds % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
+
+        // Función para aplicar estilos dinámicamente según el estado
+        function applyStatusStyle(message, state) {
+            statusText.innerText = message;
+            
+            // Limpiar clases previas
+            statusBadge.className = "px-4 py-1.5 rounded-full font-bold text-sm shadow-sm flex items-center gap-2 w-fit transition-colors duration-300 border";
+            statusDot.className = "w-2.5 h-2.5 rounded-full transition-colors duration-300";
+
+            switch(state) {
+                case 'OFFLINE':
+                    statusBadge.classList.add('bg-red-900/30', 'border-red-500', 'text-red-400');
+                    statusDot.classList.add('bg-red-500');
+                    break;
+                case 'IDLE':
+                    statusBadge.classList.add('bg-slate-700', 'border-slate-600', 'text-slate-300');
+                    statusDot.classList.add('bg-slate-400');
+                    break;
+                case 'FLOWING':
+                    statusBadge.classList.add('bg-[#78FFFD]/10', 'border-[#78FFFD]', 'text-[#78FFFD]');
+                    statusDot.classList.add('bg-[#78FFFD]', 'indicador-activo');
+                    break;
+                case 'MODERATE':
+                    statusBadge.classList.add('bg-yellow-900/30', 'border-yellow-500', 'text-yellow-400');
+                    statusDot.classList.add('bg-yellow-500', 'indicador-activo');
+                    break;
+                case 'CRITICAL':
+                    statusBadge.classList.add('bg-red-900/40', 'border-red-500', 'text-red-500', 'animate-pulse');
+                    statusDot.classList.add('bg-red-500', 'shadow-[0_0_8px_#ef4444]');
+                    break;
+            }
+        }
+
+        // Función de error explícito al no encontrar el ESP32
+        function showError() {
+            flowVal.innerText = "--";
+            durationVal.innerText = "--:--";
+            applyStatusStyle("Error de conexión con ESP32", "OFFLINE");
+        }
+
+        // Bucle de lectura
+        async function fetchESP32Data() {
+            try {
+                // Timeout corto de 800ms para evitar que se cuelgue si no hay red
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 800);
+
+                const response = await fetch(ESP32_URL, { signal: controller.signal });
+                clearTimeout(timeoutId);
+
+                if (!response.ok) {
+                    throw new Error("HTTP error " + response.status);
+                }
+
+                const data = await response.json();
+
+                // Asegurar parseo de números
+                const currentFlow = parseFloat(data.flow) || 0;
+                const currentDuration = parseInt(data.duration) || 0;
+
+                // Actualizar interfaz con números reales
+                flowVal.innerText = currentFlow.toFixed(2);
+                durationVal.innerText = formatTime(currentDuration);
+
+                // Lógica de reglas solicitada
+                if (currentFlow === 0) {
+                    applyStatusStyle("Sistema en reposo", "IDLE");
+                } else if (currentFlow < 30 && currentDuration > 3) {
+                    applyStatusStyle("Alerta: Posible Fuga Moderada", "MODERATE");
+                } else if (currentFlow >= 30 && currentDuration > 3) {
+                    applyStatusStyle("CRÍTICO: Tubería Rota", "CRITICAL");
+                } else {
+                    // Flujo normal sin superar tiempos de alerta
+                    applyStatusStyle("Agua Fluyendo", "FLOWING");
+                }
+
+            } catch (error) {
+                // Si la red se cae, si el ESP se apaga o da un error de CORS/fetch
+                console.error("Fallo la petición al ESP32: ", error);
+                showError();
+            }
+        }
+
+        // Ejecutar inmediatamente al cargar y luego cada 1 segundo (1000ms)
+        fetchESP32Data();
+        setInterval(fetchESP32Data, 1000);
+    </script>
+</body>
+</html>
