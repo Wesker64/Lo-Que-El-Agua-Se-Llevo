@@ -152,21 +152,19 @@
                     const dweetData = jsonResponse.with[0];
                     const data = dweetData.content;
                     
-                    // LÓGICA DE DESCONEXIÓN INFALIBLE
+                    // LÓGICA DE DESCONEXIÓN AJUSTADA A LATENCIA ALTA (25 segundos)
                     if (dweetData.created === ultimoDatoRecibido) {
-                        // El dato es el mismo que la vez pasada, sumamos al contador
                         contadorDatosRepetidos++;
-                        if (contadorDatosRepetidos >= 8) { // 8 intentos a 500ms = 4 segundos sin datos nuevos
-                            showError("Sin conexión con el servidor");
-                            return; // Congelamos la interfaz en modo error
+                        // 50 intentos a 500ms = 25 segundos de tolerancia
+                        if (contadorDatosRepetidos >= 50) { 
+                            showError("Sin Conexion Con Servidor");
+                            return; 
                         }
                     } else {
-                        // ¡Llegó un dato nuevo! Actualizamos la memoria y reiniciamos el contador
                         ultimoDatoRecibido = dweetData.created;
                         contadorDatosRepetidos = 0;
                     }
 
-                    // Si pasamos la prueba de desconexión, dibujamos los datos
                     const currentFlow = parseFloat(data.flow) || 0;
                     const currentDuration = parseInt(data.duration) || 0;
 
@@ -195,7 +193,6 @@
             }
         }
 
-        // Ejecutar inmediatamente y luego cada medio segundo
         fetchCloudData();
         setInterval(fetchCloudData, 500);
     </script>
