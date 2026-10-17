@@ -82,7 +82,7 @@
 
     <!-- Lógica de Peticiones a la Nube (Dweet.io) -->
     <script>
-        // ID Único de tu ESP32 en la nube (Dweet.io)
+        // ID Único de tu ESP32 en la nube (Dweet.cc)
         const THING_NAME = 'monitor-fugas-esp32-demo-xyz123';
         const CLOUD_URL = `https://dweet.cc/get/latest/dweet/for/${THING_NAME}`;
 
@@ -139,11 +139,16 @@
             applyStatusStyle(motivo || "Desconectado de la Nube", "OFFLINE");
         }
 
-        // Bucle de lectura desde Dweet.io
+        // Bucle de lectura desde Dweet.cc
         async function fetchCloudData() {
             try {
-                // Fetch a la API pública de Dweet
-                const response = await fetch(CLOUD_URL);
+                // Controlador para cancelar la petición si tarda más de 400ms
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 400);
+
+                // Fetch a la API pública de Dweet con el controlador
+                const response = await fetch(CLOUD_URL, { signal: controller.signal });
+                clearTimeout(timeoutId);
 
                 if (!response.ok) {
                     if(response.status === 404) {
@@ -154,7 +159,7 @@
 
                 const jsonResponse = await response.json();
 
-                // Extraer el contenido de la estructura de Dweet.io
+                // Extraer el contenido de la estructura de Dweet.cc
                 if (jsonResponse.this === "succeeded" && jsonResponse.with && jsonResponse.with.length > 0) {
                     // Dweet encapsula nuestros datos en jsonResponse.with[0].content
                     const data = jsonResponse.with[0].content;
@@ -179,12 +184,15 @@
                         applyStatusStyle("Agua Fluyendo", "FLOWING");
                     }
                 } else {
-                    showError("Buzón vacío en Dweet.io");
+                    showError("Buzón vacío en Dweet.cc");
                 }
 
             } catch (error) {
                 console.error("Fallo la petición a Dweet: ", error);
-                if(error.message === "Failed to fetch") {
+                if(error.name === 'AbortError') {
+                    // Ignoramos el error de aborto para que no parpadee a OFFLINE, simplemente reintenta en 500ms
+                    console.log("Petición muy lenta, reintentando...");
+                } else if(error.message === "Failed to fetch") {
                     showError("Bloqueado por AdBlock / Antivirus / Brave");
                 } else {
                     showError(error.message);
@@ -192,9 +200,9 @@
             }
         }
 
-        // Ejecutar inmediatamente al cargar y luego cada 1.5 segundos
+        // Ejecutar inmediatamente al cargar y luego cada medio segundo (500ms)
         fetchCloudData();
-        setInterval(fetchCloudData, 1500);
+        setInterval(fetchCloudData, 500);
     </script>
 </body>
 </html>
