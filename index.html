@@ -91,6 +91,11 @@
         const statusBadge = document.getElementById('status-badge');
         const statusDot = document.getElementById('status-dot');
 
+        // Variables maestras de control de tiempo
+        let ultimoDatoRecibido = "";
+        let contadorDatosRepetidos = 0;
+        let esPrimeraCarga = true;
+
         function formatTime(totalSeconds) {
             const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
             const s = (totalSeconds % 60).toString().padStart(2, '0');
@@ -142,28 +147,37 @@
                     throw new Error("Error del servidor: " + response.status);
                 }
 
-                // 1. Extraemos la hora exacta del servidor web de Dweet.cc para una sincronización perfecta
-                const serverDateHeader = response.headers.get('date');
-                const serverTime = serverDateHeader ? new Date(serverDateHeader).getTime() : Date.now();
-
                 const jsonResponse = await response.json();
 
                 if (jsonResponse.this === "succeeded" && jsonResponse.with && jsonResponse.with.length > 0) {
                     const dweetData = jsonResponse.with[0];
                     const data = dweetData.content;
                     
-                    // 2. Extraemos la hora en la que se creó el dato
-                    const dataTime = new Date(dweetData.created).getTime();
-                    
-                    // 3. Calculamos la antigüedad real del mensaje en segundos
-                    const ageInSeconds = (serverTime - dataTime) / 1000;
+                    // LÓGICA DE DETECCIÓN HÍBRIDA (Inmune a bloqueos)
+                    const ageInSeconds = (Date.now() - new Date(dweetData.created).getTime()) / 1000;
 
-                    // Si al abrir la página (o dejarla abierta) el mensaje tiene más de 25 segundos de viejo, cortamos.
-                    if (ageInSeconds > 25) {
-                        showError("Simulación Detenida (Sin conexión)");
-                        return; 
+                    // 1. Verificamos si el dato es exactamente el mismo que la vez pasada
+                    if (dweetData.created === ultimoDatoRecibido) {
+                        contadorDatosRepetidos++;
+                    } else {
+                        ultimoDatoRecibido = dweetData.created;
+                        contadorDatosRepetidos = 0; // Si hay dato nuevo, limpiamos la alarma
                     }
 
+                    // 2. Si recién abres la página y detecta que el último dato tiene más de 15 segundos
+                    // llenamos el contador artificialmente para que caiga en error de inmediato.
+                    if (esPrimeraCarga && ageInSeconds > 15) {
+                        contadorDatosRepetidos = 20; 
+                    }
+                    esPrimeraCarga = false; // Desactivamos la revisión de primera carga
+
+                    // 3. Ejecutar desconexión si llegamos al límite (20 intentos de 500ms = 10 segundos)
+                    if (contadorDatosRepetidos >= 20) {
+                        showError("Simulación Detenida (Sin conexión)");
+                        return; // Cortamos aquí para que no actualice la interfaz visual
+                    }
+
+                    // === DIBUJAR DATOS (Solo si no hubo desconexión) ===
                     const currentFlow = parseFloat(data.flow) || 0;
                     const currentDuration = parseInt(data.duration) || 0;
 
