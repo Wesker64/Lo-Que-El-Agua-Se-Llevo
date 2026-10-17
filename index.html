@@ -91,10 +91,6 @@
         const statusBadge = document.getElementById('status-badge');
         const statusDot = document.getElementById('status-dot');
 
-        // Variables globales para rastrear la desconexión
-        let ultimoDatoRecibido = "";
-        let contadorDatosRepetidos = 0;
-
         function formatTime(totalSeconds) {
             const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
             const s = (totalSeconds % 60).toString().padStart(2, '0');
@@ -146,23 +142,26 @@
                     throw new Error("Error del servidor: " + response.status);
                 }
 
+                // 1. Extraemos la hora exacta del servidor web de Dweet.cc para una sincronización perfecta
+                const serverDateHeader = response.headers.get('date');
+                const serverTime = serverDateHeader ? new Date(serverDateHeader).getTime() : Date.now();
+
                 const jsonResponse = await response.json();
 
                 if (jsonResponse.this === "succeeded" && jsonResponse.with && jsonResponse.with.length > 0) {
                     const dweetData = jsonResponse.with[0];
                     const data = dweetData.content;
                     
-                    // LÓGICA DE DESCONEXIÓN AJUSTADA A LATENCIA ALTA (25 segundos)
-                    if (dweetData.created === ultimoDatoRecibido) {
-                        contadorDatosRepetidos++;
-                        // 50 intentos a 500ms = 25 segundos de tolerancia
-                        if (contadorDatosRepetidos >= 50) { 
-                            showError("Sin Conexion Con Servidor");
-                            return; 
-                        }
-                    } else {
-                        ultimoDatoRecibido = dweetData.created;
-                        contadorDatosRepetidos = 0;
+                    // 2. Extraemos la hora en la que se creó el dato
+                    const dataTime = new Date(dweetData.created).getTime();
+                    
+                    // 3. Calculamos la antigüedad real del mensaje en segundos
+                    const ageInSeconds = (serverTime - dataTime) / 1000;
+
+                    // Si al abrir la página (o dejarla abierta) el mensaje tiene más de 25 segundos de viejo, cortamos.
+                    if (ageInSeconds > 25) {
+                        showError("Simulación Detenida (Sin conexión)");
+                        return; 
                     }
 
                     const currentFlow = parseFloat(data.flow) || 0;
