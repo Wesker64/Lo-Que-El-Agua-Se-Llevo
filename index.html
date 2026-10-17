@@ -139,7 +139,6 @@
 
         async function fetchCloudData() {
             try {
-                // El "?nocache=" evita que Opera GX guarde datos viejos en su memoria
                 const url = CLOUD_URL + "?nocache=" + new Date().getTime();
                 const response = await fetch(url, { cache: 'no-store' });
 
@@ -153,31 +152,31 @@
                     const dweetData = jsonResponse.with[0];
                     const data = dweetData.content;
                     
-                    // 1. PRIMERA CARGA AL ABRIR LA PÁGINA
                     if (ultimoDatoRecibido === "") {
                         ultimoDatoRecibido = dweetData.created;
                         applyStatusStyle("Sincronizando...", "IDLE");
-                        return; // Ocultamos los datos hasta confirmar que no es un fantasma
+                        return; 
                     }
 
-                    // 2. COMPARAR DATOS EN BUSCA DE MOVIMIENTO
                     if (dweetData.created === ultimoDatoRecibido) {
                         contadorDatosRepetidos++;
                     } else {
-                        // ¡El dato cambió! Wokwi está vivo.
                         ultimoDatoRecibido = dweetData.created;
                         contadorDatosRepetidos = 0;
                         sensorConfirmadoVivo = true; 
                     }
 
-                    // 3. LÍMITE DE DESCONEXIÓN (8 intentos rápidos = 4 segundos exactos)
-                    if (contadorDatosRepetidos >= 8) {
-                        sensorConfirmadoVivo = false; // El sensor está apagado
-                        showError("Sin Conexcion Con Servidor");
+                    // EL SECRETO: Tolerancia Dinámica
+                    // 40 intentos (20 seg) si la simulación está corriendo para aguantar el lag de Wokwi.
+                    // 6 intentos (3 seg) si recién abriste la página para avisar rápido si está apagado.
+                    let limiteTolerancia = sensorConfirmadoVivo ? 40 : 6;
+
+                    if (contadorDatosRepetidos >= limiteTolerancia) {
+                        sensorConfirmadoVivo = false; // Se apagó, regresamos la paciencia a modo rápido
+                        showError("Sin Conexion Con Servidor");
                         return;
                     }
 
-                    // 4. MOSTRAR DATOS (Solo si confirmamos que la simulación corre)
                     if (sensorConfirmadoVivo) {
                         const currentFlow = parseFloat(data.flow) || 0;
                         const currentDuration = parseInt(data.duration) || 0;
@@ -195,7 +194,6 @@
                             applyStatusStyle("Agua Fluyendo", "FLOWING");
                         }
                     } else {
-                        // Mantenemos a la espera un instante
                         applyStatusStyle("Buscando señal...", "IDLE");
                     }
 
@@ -208,7 +206,6 @@
             }
         }
 
-        // Ejecutar lectura
         fetchCloudData();
         setInterval(fetchCloudData, 500);
     </script>
